@@ -3,11 +3,11 @@
 <head>
 </head>
 <body>
-<h1>Hello from Fly</h1>
-{{ if .Region }}
-<h2>I'm running in the {{.Region}} region</h2>
-<h2>Database {{.Database}}</h2>
+<h1>Receipts</h1>
+<ol>
+{{range .}}
+<li>{{.ID}}: {{.Text}}</li>
 {{end}}
-<pre>Env: {{.Env}}</pre>
+</ol>
 </body>
 </html>
