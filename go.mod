@@ -1,6 +1,6 @@
 module github.com/jindongh/receipt
 
-go 1.20
+go 1.19
 
 require (
 	github.com/golang/snappy v0.0.1 // indirect

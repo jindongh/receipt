@@ -63,20 +63,21 @@ func main() {
 			CreatedAt: time.Now(),
 			Text:      text,
 		})
-		log.Fatal(err)
+		if err != nil {
+			log.Fatal(err)
+		}
 	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		collection := getCollection(ctx)
 		filter := bson.D{{}}
 		cur, err := collection.Find(ctx, filter)
 		if err != nil {
-			log.Fatal("jindongh")
 			log.Fatal(err)
 		}
 		receipts := []Receipt{}
 		for cur.Next(ctx) {
 			r := Receipt{}
-			_ = cur.Decode(&t)
+			_ = cur.Decode(&r)
 			receipts = append(receipts, r)
 		}
 
