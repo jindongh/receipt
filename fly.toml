@@ -12,6 +12,8 @@ processes = []
 [env]
   PORT = "8080"
   DB_URL = "<url>"
+  GOOGLE_CLIENT_ID = "<client_id>"
+  GOOGLE_CLIENT_SECRET = "<secret>"
 
 [experimental]
   allowed_public_ports = []

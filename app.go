@@ -2,17 +2,17 @@ package main
 
 import (
 	"embed"
-	"time"
-	"context"
 	"html/template"
 	"log"
-	"net/http"
 	"os"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"gorm.io/gorm"
+	"gorm.io/driver/postgres"
+	"github.com/joho/godotenv"
+	"github.com/gofiber/fiber/v2" 
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/jindongh/receipt/todos"
+	"github.com/jindongh/receipt/database"
 )
 
 //go:embed templates/*
@@ -20,70 +20,61 @@ var resources embed.FS
 
 var t = template.Must(template.ParseFS(resources, "templates/*"))
 
-type Receipt struct {
-	ID        primitive.ObjectID `bson:"_id"`
-	CreatedAt time.Time          `bson:"created_at"`
-	Text      string             `bson:"text"`
+func initDatabase() {
+    var err error
+    dbUrl := os.Getenv("DB_URL")
+    database.DBConn, err = gorm.Open(postgres.Open(dbUrl), &gorm.Config{})
+    if err != nil {
+        panic("failed to connect database")
+    }
+
+    log.Println("Database successfully connected")
+
+    database.DBConn.AutoMigrate(&todos.Todo{})
+    log.Println("Database Migrated")
 }
 
-func getCollection(ctx context.Context) *mongo.Collection {
-	dbUrl := os.Getenv("DB_URL")
-	client, err := mongo.NewClient(options.Client().ApplyURI(dbUrl))
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = client.Connect(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	//check the connection
-	err = client.Ping(context.TODO(), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+func setupV1(app *fiber.App) {
+    // Group is used for Routes with a common prefix to define a new sub-router with optional middleware.
+    v1 := app.Group("/v1")
+    //Each route will have /v1 prefix
+    setupTodosRoutes(v1)
+}
 
-	receiptDatabase := client.Database("receipt")
-	receiptsCollection := receiptDatabase.Collection("receipts")
-	return receiptsCollection 
+func setupTodosRoutes(grp fiber.Router) {
+    // Group is used for Routes with common prefix => Each route will have /todos prefix
+    todosRoutes := grp.Group("/todos")
+    // Route for Get all todos -> navigate to => http://127.0.0.1:3000/v1/todos/
+    todosRoutes.Get("/", todos.GetAll)
+    // Route for Get a todo -> navigate to => http://127.0.0.1:3000/v1/todos/<todo's id>
+    todosRoutes.Get("/:id", todos.GetOne)
+    // Route for Add a todo -> navigate to => http://127.0.0.1:3000/v1/todos/
+    todosRoutes.Post("/", todos.AddTodo)
+    // Route for Delete a todo -> navigate to => http://127.0.0.1:3000/v1/todos/<todo's id>
+    todosRoutes.Delete("/:id", todos.DeleteTodo)
+    // Route for Update a todo -> navigate to => http://127.0.0.1:3000/v1/todos/<todo's id>
+    todosRoutes.Patch("/:id", todos.UpdateTodo)
 }
 
 func main() {
+	godotenv.Load()
 	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	app := fiber.New()
 
+	initDatabase()
+	setupV1(app)
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		// send text
+		return c.SendString("Hello, World!")
+	})
+
+	app.Use(logger.New(logger.Config{ // add Logger middleware with config
+		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
+	}))
+
+	err := app.Listen(":" + port) 
+	if err != nil {
+		panic(err)
 	}
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-
-	http.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
-		text := r.URL.Query().Get("text")
-		collection := getCollection(ctx)
-		_, err := collection.InsertOne(ctx, &Receipt{
-			ID:        primitive.NewObjectID(),
-			CreatedAt: time.Now(),
-			Text:      text,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-	})
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		collection := getCollection(ctx)
-		filter := bson.D{{}}
-		cur, err := collection.Find(ctx, filter)
-		if err != nil {
-			log.Fatal(err)
-		}
-		receipts := []Receipt{}
-		for cur.Next(ctx) {
-			r := Receipt{}
-			_ = cur.Decode(&r)
-			receipts = append(receipts, r)
-		}
-
-		t.ExecuteTemplate(w, "index.html.tmpl", receipts)
-	})
-
-	log.Println("listening on", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
